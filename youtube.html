@@ -15,11 +15,11 @@
   html,body{height:100%;background:transparent;overflow:hidden;
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
  
-  #wrap{display:flex;flex-direction:column;height:100%;width:100%;
+  #wrap{display:flex;flex-direction:column;width:100%;
         background:#000;border-radius:var(--radius);overflow:hidden}
  
-  /* ---- video area ---- */
-  #video{position:relative;flex:1 1 auto;min-height:0;background:#000}
+  /* ---- video area: locked to 16:9 so it can never letterbox ---- */
+  #video{position:relative;width:100%;aspect-ratio:16/9;flex:0 0 auto;background:#000}
   #yt{position:absolute;inset:0;width:100%;height:100%;border:0}
  
   /* swallows clicks so nobody can reach youtube.com */
