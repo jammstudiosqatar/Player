@@ -15,12 +15,13 @@
   html,body{height:100%;background:transparent;overflow:hidden;
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
  
-  #wrap{display:flex;flex-direction:column;width:100%;
+  #wrap{display:flex;flex-direction:column;width:100%;height:100%;
         background:#000;border-radius:var(--radius);overflow:hidden}
  
-  /* ---- video area: locked to 16:9 so it can never letterbox ---- */
-  #video{position:relative;width:100%;aspect-ratio:16/9;flex:0 0 auto;background:#000}
-  #yt{position:absolute;inset:0;width:100%;height:100%;border:0}
+  /* ---- video area: fills whatever height Glide gives us ---- */
+  #video{position:relative;width:100%;flex:1 1 auto;min-height:0;background:#000;overflow:hidden}
+  /* iframe is sized by JS to COVER the box (crop, never letterbox) */
+  #yt{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border:0}
  
   /* swallows clicks so nobody can reach youtube.com */
   #shield{position:absolute;inset:0;z-index:2;cursor:pointer}
@@ -120,6 +121,26 @@
     "url('" + (POSTER || ('https://i.ytimg.com/vi/' + VIDEO + '/maxresdefault.jpg')) + "'), " +
     "url('https://i.ytimg.com/vi/" + VIDEO + "/hqdefault.jpg')";
  
+  // Size the YouTube iframe so it always COVERS the video box.
+  // Glide only offers preset embed heights, so the box ratio is unknown —
+  // cropping the edges is better than black bars.
+  var videoBox = document.getElementById('video');
+  function fitCover(){
+    var el = document.getElementById('yt');
+    if (!el) return;
+    var w = videoBox.clientWidth, h = videoBox.clientHeight;
+    if (!w || !h) return;
+    var vw, vh;
+    if (w / h > 16 / 9){ vw = w; vh = w * 9 / 16; }
+    else { vh = h; vw = h * 16 / 9; }
+    // overscan a touch so YouTube's own edge furniture falls outside the box
+    vw *= 1.02; vh *= 1.02;
+    el.style.width  = Math.ceil(vw) + 'px';
+    el.style.height = Math.ceil(vh) + 'px';
+  }
+  window.addEventListener('resize', fitCover);
+  if (window.ResizeObserver) new ResizeObserver(fitCover).observe(videoBox);
+ 
   var PLAY  = 'M23 11.3 3 .3A2 2 0 0 0 0 2v22a2 2 0 0 0 3 1.7l20-11a2 2 0 0 0 0-3.4Z';
   var PAUSE = 'M2 0h6v26H2zM16 0h6v26h-6z';
   var SPK   = 'M4 9v6h4l5 5V4L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z';
@@ -153,7 +174,7 @@
       videoId: VIDEO,
       playerVars: vars,
       events: {
-        onReady: function(){ clearTimeout(apiWatchdog); render(); },
+        onReady: function(){ clearTimeout(apiWatchdog); fitCover(); render(); },
         onStateChange: onState,
         onError: function(){ clearTimeout(apiWatchdog); fallback(); }
       }
@@ -186,6 +207,7 @@
   // non-playing state. Cover it. Thumbnail before first play, dark scrim after.
   function onState(e){
     var S = YT.PlayerState;
+    fitCover();
     if (e.data === S.PLAYING){
       everPlayed = true;
       cover.classList.add('hide');
