@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Player</title>
+<style>
+  :root{
+    --accent:#FF196D;
+    --track:rgba(255,255,255,.22);
+    --text:rgba(255,255,255,.85);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#000;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+  #stage{position:relative;width:100%;height:100%;background:#000;overflow:hidden}
+  #yt{position:absolute;inset:0;width:100%;height:100%;border:0}
+  /* swallows every click so the viewer can never reach youtube.com */
+  #shield{position:absolute;inset:0;z-index:2;cursor:pointer;background:transparent}
+  #poster{position:absolute;inset:0;z-index:3;background-size:cover;background-position:center;cursor:pointer;
+          display:flex;align-items:center;justify-content:center}
+  #poster::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.28)}
+  .bigplay{position:relative;z-index:1;width:68px;height:68px;border-radius:50%;background:var(--accent);
+           display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+  .bigplay svg{margin-left:4px}
+  #bar{position:absolute;left:0;right:0;bottom:0;z-index:4;display:flex;align-items:center;gap:12px;
+       padding:14px 16px;background:linear-gradient(transparent,rgba(0,0,0,.72));opacity:0;transition:opacity .2s}
+  #stage.started #bar{opacity:1}
+  #toggle{flex:0 0 auto;width:38px;height:38px;border:0;border-radius:50%;background:var(--accent);
+          display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+  #scrub{position:relative;flex:1 1 auto;height:20px;display:flex;align-items:center;cursor:pointer;touch-action:none}
+  #scrub .rail{position:absolute;left:0;right:0;height:4px;border-radius:2px;background:var(--track)}
+  #scrub .fill{position:absolute;left:0;height:4px;border-radius:2px;background:var(--accent);width:0}
+  #scrub .knob{position:absolute;width:12px;height:12px;border-radius:50%;background:#fff;left:0;margin-left:-6px;
+               box-shadow:0 1px 4px rgba(0,0,0,.5)}
+  #time{flex:0 0 auto;font-size:12px;font-variant-numeric:tabular-nums;color:var(--text);letter-spacing:.2px}
+  #mute{flex:0 0 auto;width:28px;height:28px;border:0;background:none;cursor:pointer;padding:0;
+        display:flex;align-items:center;justify-content:center;opacity:.85}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="yt"></div>
+  <div id="shield"></div>
+  <div id="poster"><div class="bigplay">
+    <svg width="24" height="26" viewBox="0 0 24 26" fill="#fff"><path d="M23 11.3 3 .3A2 2 0 0 0 0 2v22a2 2 0 0 0 3 1.7l20-11a2 2 0 0 0 0-3.4Z"/></svg>
+  </div></div>
+  <div id="bar">
+    <button id="toggle" aria-label="Play or pause">
+      <svg id="icon" width="14" height="16" viewBox="0 0 24 26" fill="#fff"><path d="M23 11.3 3 .3A2 2 0 0 0 0 2v22a2 2 0 0 0 3 1.7l20-11a2 2 0 0 0 0-3.4Z"/></svg>
+    </button>
+    <div id="scrub"><div class="rail"></div><div class="fill"></div><div class="knob"></div></div>
+    <span id="time">0:00 / 0:00</span>
+    <button id="mute" aria-label="Mute">
+      <svg id="micon" width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M4 9v6h4l5 5V4L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var q = new URLSearchParams(location.search);
+  var VIDEO = (q.get('v') || '').trim();
+  var POSTER = q.get('poster');
+  var ACCENT = q.get('accent');
+  if (ACCENT) document.documentElement.style.setProperty('--accent', '#' + ACCENT.replace('#',''));
+
+  var stage = document.getElementById('stage');
+  var poster = document.getElementById('poster');
+  var shield = document.getElementById('shield');
+  var toggle = document.getElementById('toggle');
+  var icon   = document.getElementById('icon');
+  var micon  = document.getElementById('micon');
+  var muteBt = document.getElementById('mute');
+  var scrub  = document.getElementById('scrub');
+  var fill   = scrub.querySelector('.fill');
+  var knob   = scrub.querySelector('.knob');
+  var timeEl = document.getElementById('time');
+
+  // maxres doesn't exist for every upload; fall back to hqdefault, which always does
+  poster.style.backgroundImage = "url('" + (POSTER || ('https://i.ytimg.com/vi/' + VIDEO + '/maxresdefault.jpg')) + "'), url('https://i.ytimg.com/vi/" + VIDEO + "/hqdefault.jpg')";
+
+  var PLAY  = 'M23 11.3 3 .3A2 2 0 0 0 0 2v22a2 2 0 0 0 3 1.7l20-11a2 2 0 0 0 0-3.4Z';
+  var PAUSE = 'M2 0h6v26H2zM16 0h6v26h-6z';
+  var SPK   = 'M4 9v6h4l5 5V4L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z';
+  var MUTED = 'M4 9v6h4l5 5V4L8 9H4Zm16.5 0-1.4-1.4L17 9.7l-2.1-2.1-1.4 1.4 2.1 2.1-2.1 2.1 1.4 1.4 2.1-2.1 2.1 2.1 1.4-1.4-2.1-2.1 2.1-2.1Z';
+
+  var player, timer, dragging = false, started = false;
+
+  var tag = document.createElement('script');
+  tag.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(tag);
+
+  window.onYouTubeIframeAPIReady = function(){
+    player = new YT.Player('yt', {
+      videoId: VIDEO,
+      playerVars: {
+        controls: 0, rel: 0, iv_load_policy: 3, disablekb: 1,
+        playsinline: 1, fs: 0, modestbranding: 1, origin: location.origin
+      },
+      events: {
+        onReady: function(){ render(); },
+        onStateChange: function(e){
+          if (e.data === YT.PlayerState.PLAYING){
+            started = true; stage.classList.add('started');
+            poster.style.display = 'none';
+            icon.setAttribute('d', PAUSE);
+            clearInterval(timer); timer = setInterval(render, 250);
+          } else {
+            icon.setAttribute('d', PLAY);
+            if (e.data === YT.PlayerState.ENDED){ clearInterval(timer); render(); }
+          }
+        }
+      }
+    });
+  };
+
+  function fmt(s){
+    s = Math.max(0, Math.floor(s || 0));
+    var m = Math.floor(s / 60), r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+
+  function render(){
+    if (!player || !player.getDuration) return;
+    var d = player.getDuration() || 0;
+    var t = player.getCurrentTime() || 0;
+    if (!dragging){
+      var pct = d ? (t / d) * 100 : 0;
+      fill.style.width = pct + '%';
+      knob.style.left  = pct + '%';
+    }
+    timeEl.textContent = fmt(t) + ' / ' + fmt(d);
+  }
+
+  function play(){ player && player.playVideo(); }
+  function pause(){ player && player.pauseVideo(); }
+  function flip(){
+    if (!player || !player.getPlayerState) return;
+    var s = player.getPlayerState();
+    (s === YT.PlayerState.PLAYING) ? pause() : play();
+  }
+
+  poster.addEventListener('click', function(e){ e.stopPropagation(); play(); });
+  shield.addEventListener('click', flip);
+  toggle.addEventListener('click', function(e){ e.stopPropagation(); flip(); });
+
+  muteBt.addEventListener('click', function(e){
+    e.stopPropagation();
+    if (!player) return;
+    if (player.isMuted()){ player.unMute(); micon.setAttribute('d', SPK); }
+    else { player.mute(); micon.setAttribute('d', MUTED); }
+  });
+
+  function seekFrom(clientX){
+    var r = scrub.getBoundingClientRect();
+    var pct = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    fill.style.width = (pct * 100) + '%';
+    knob.style.left  = (pct * 100) + '%';
+    return pct;
+  }
+  function commit(clientX){
+    if (!player || !player.getDuration) return;
+    player.seekTo(seekFrom(clientX) * player.getDuration(), true);
+  }
+
+  scrub.addEventListener('pointerdown', function(e){
+    e.stopPropagation(); dragging = true;
+    scrub.setPointerCapture(e.pointerId); seekFrom(e.clientX);
+  });
+  scrub.addEventListener('pointermove', function(e){ if (dragging) seekFrom(e.clientX); });
+  scrub.addEventListener('pointerup', function(e){
+    if (!dragging) return;
+    dragging = false; commit(e.clientX);
+  });
+})();
+</script>
+</body>
+</html>
