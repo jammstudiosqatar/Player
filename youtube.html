@@ -125,25 +125,62 @@
   var SPK   = 'M4 9v6h4l5 5V4L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z';
   var MUTED = 'M4 9v6h4l5 5V4L8 9H4Zm16.5 0-1.4-1.4L17 9.7l-2.1-2.1-1.4 1.4 2.1 2.1-2.1 2.1 1.4 1.4 2.1-2.1 2.1 2.1 1.4-1.4-2.1-2.1 2.1-2.1Z';
  
-  var player, timer, dragging = false, everPlayed = false;
+  var player, timer, dragging = false, everPlayed = false, apiDead = false;
+ 
+  var vars = {
+    controls: 0, rel: 0, iv_load_policy: 3, disablekb: 1, cc_load_policy: 0,
+    playsinline: 1, fs: 0, modestbranding: 1, enablejsapi: 1
+  };
+  // In a sandboxed iframe (Glide) location.origin is the string "null", which the
+  // YouTube API rejects silently. Only send it when it is a real origin.
+  if (location.origin && location.origin !== 'null' && /^https?:/.test(location.origin)){
+    vars.origin = location.origin;
+  }
  
   var tag = document.createElement('script');
   tag.src = 'https://www.youtube.com/iframe_api';
+  tag.onerror = function(){ fallback(); };
   document.head.appendChild(tag);
+ 
+  // If the API never loads or never becomes ready, degrade to a plain embed
+  // rather than leaving a play button that does nothing.
+  var apiWatchdog = setTimeout(function(){
+    if (!window.YT || !window.YT.Player || !player) fallback();
+  }, 5000);
  
   window.onYouTubeIframeAPIReady = function(){
     player = new YT.Player('yt', {
       videoId: VIDEO,
-      playerVars: {
-        controls: 0, rel: 0, iv_load_policy: 3, disablekb: 1, cc_load_policy: 0,
-        playsinline: 1, fs: 0, modestbranding: 1, origin: location.origin
-      },
+      playerVars: vars,
       events: {
-        onReady: render,
-        onStateChange: onState
+        onReady: function(){ clearTimeout(apiWatchdog); render(); },
+        onStateChange: onState,
+        onError: function(){ clearTimeout(apiWatchdog); fallback(); }
       }
     });
   };
+ 
+  // Fallback: no JS control of the player is possible, so hand back YouTube's own
+  // controls (colour=white keeps them quiet) and drop our dead control strip.
+  function fallback(){
+    if (apiDead) return;
+    apiDead = true;
+    clearTimeout(apiWatchdog); clearInterval(timer);
+    document.getElementById('bar').style.display = 'none';
+    var f = document.createElement('iframe');
+    f.id = 'yt';
+    f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture');
+    f.setAttribute('allowfullscreen', '');
+    f.src = 'https://www.youtube.com/embed/' + VIDEO +
+            '?rel=0&iv_load_policy=3&playsinline=1&color=white&modestbranding=1';
+    var slot = document.getElementById('yt');
+    slot.parentNode.replaceChild(f, slot);
+    shield.style.display = 'none';           // YouTube's controls need the clicks
+    cover.onclick = function(){
+      f.src += '&autoplay=1';
+      cover.classList.add('hide');
+    };
+  }
  
   // YouTube paints its own branded screen (title, logo, big play button) on every
   // non-playing state. Cover it. Thumbnail before first play, dark scrim after.
