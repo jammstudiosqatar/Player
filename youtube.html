@@ -55,15 +55,26 @@
     </button>
   </div>
 </div>
-
+ 
 <script>
 (function(){
   var q = new URLSearchParams(location.search);
-  var VIDEO = (q.get('v') || '').trim();
+ 
+  // Accepts a bare 11-char ID, or any YouTube URL form:
+  //   youtu.be/ID  ·  watch?v=ID  ·  /embed/ID  ·  /shorts/ID  ·  /live/ID
+  // Trailing junk like ?si=... or &t=30 is ignored.
+  function toVideoId(raw){
+    raw = (raw || '').trim();
+    if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+    var m = raw.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{11})/);
+    return m ? m[1] : '';
+  }
+ 
+  var VIDEO = toVideoId(q.get('v'));
   var POSTER = q.get('poster');
   var ACCENT = q.get('accent');
   if (ACCENT) document.documentElement.style.setProperty('--accent', '#' + ACCENT.replace('#',''));
-
+ 
   var stage = document.getElementById('stage');
   var poster = document.getElementById('poster');
   var shield = document.getElementById('shield');
@@ -75,21 +86,29 @@
   var fill   = scrub.querySelector('.fill');
   var knob   = scrub.querySelector('.knob');
   var timeEl = document.getElementById('time');
-
+ 
   // maxres doesn't exist for every upload; fall back to hqdefault, which always does
   poster.style.backgroundImage = "url('" + (POSTER || ('https://i.ytimg.com/vi/' + VIDEO + '/maxresdefault.jpg')) + "'), url('https://i.ytimg.com/vi/" + VIDEO + "/hqdefault.jpg')";
-
+ 
   var PLAY  = 'M23 11.3 3 .3A2 2 0 0 0 0 2v22a2 2 0 0 0 3 1.7l20-11a2 2 0 0 0 0-3.4Z';
   var PAUSE = 'M2 0h6v26H2zM16 0h6v26h-6z';
   var SPK   = 'M4 9v6h4l5 5V4L8 9H4Zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Z';
   var MUTED = 'M4 9v6h4l5 5V4L8 9H4Zm16.5 0-1.4-1.4L17 9.7l-2.1-2.1-1.4 1.4 2.1 2.1-2.1 2.1 1.4 1.4 2.1-2.1 2.1 2.1 1.4-1.4-2.1-2.1 2.1-2.1Z';
-
+ 
+  if (!VIDEO){
+    document.getElementById('stage').innerHTML =
+      '<div style="display:flex;height:100%;align-items:center;justify-content:center;' +
+      'color:rgba(255,255,255,.6);font-size:13px;text-align:center;padding:24px">' +
+      'No video. Add ?v= a YouTube ID or link to this URL.</div>';
+    return;
+  }
+ 
   var player, timer, dragging = false, started = false;
-
+ 
   var tag = document.createElement('script');
   tag.src = 'https://www.youtube.com/iframe_api';
   document.head.appendChild(tag);
-
+ 
   window.onYouTubeIframeAPIReady = function(){
     player = new YT.Player('yt', {
       videoId: VIDEO,
@@ -113,13 +132,13 @@
       }
     });
   };
-
+ 
   function fmt(s){
     s = Math.max(0, Math.floor(s || 0));
     var m = Math.floor(s / 60), r = s % 60;
     return m + ':' + (r < 10 ? '0' : '') + r;
   }
-
+ 
   function render(){
     if (!player || !player.getDuration) return;
     var d = player.getDuration() || 0;
@@ -131,7 +150,7 @@
     }
     timeEl.textContent = fmt(t) + ' / ' + fmt(d);
   }
-
+ 
   function play(){ player && player.playVideo(); }
   function pause(){ player && player.pauseVideo(); }
   function flip(){
@@ -139,18 +158,18 @@
     var s = player.getPlayerState();
     (s === YT.PlayerState.PLAYING) ? pause() : play();
   }
-
+ 
   poster.addEventListener('click', function(e){ e.stopPropagation(); play(); });
   shield.addEventListener('click', flip);
   toggle.addEventListener('click', function(e){ e.stopPropagation(); flip(); });
-
+ 
   muteBt.addEventListener('click', function(e){
     e.stopPropagation();
     if (!player) return;
     if (player.isMuted()){ player.unMute(); micon.setAttribute('d', SPK); }
     else { player.mute(); micon.setAttribute('d', MUTED); }
   });
-
+ 
   function seekFrom(clientX){
     var r = scrub.getBoundingClientRect();
     var pct = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
@@ -162,7 +181,7 @@
     if (!player || !player.getDuration) return;
     player.seekTo(seekFrom(clientX) * player.getDuration(), true);
   }
-
+ 
   scrub.addEventListener('pointerdown', function(e){
     e.stopPropagation(); dragging = true;
     scrub.setPointerCapture(e.pointerId); seekFrom(e.clientX);
@@ -176,3 +195,4 @@
 </script>
 </body>
 </html>
+ 
