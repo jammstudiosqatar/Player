@@ -21,16 +21,18 @@
   /* ---- video area: fills whatever height Glide gives us ---- */
   #video{position:relative;width:100%;flex:1 1 auto;min-height:0;background:#000;overflow:hidden}
   /* iframe is sized by JS to COVER the box (crop, never letterbox) */
+  /* do NOT set pointer-events:none here — YouTube then never auto-hides its chrome */
   #yt{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border:0}
  
   /* swallows clicks so nobody can reach youtube.com */
   #shield{position:absolute;inset:0;z-index:2;cursor:pointer}
  
   /* covers YouTube's branded idle/paused screen: title, logo, centre play */
-  #cover{position:absolute;inset:0;z-index:3;cursor:pointer;
+  /* MUST be fully opaque: a translucent cover lets YouTube's title,
+     share button and logo show through on pause and at the end. */
+  #cover{position:absolute;inset:0;z-index:3;cursor:pointer;opacity:1;
          display:flex;align-items:center;justify-content:center;
          background-size:cover;background-position:center;background-color:#000}
-  #cover.scrim{background-image:none !important;background-color:rgba(0,0,0,.72)}
   #cover.hide{display:none}
   #cover::before{content:"";position:absolute;inset:0;background:rgba(0,0,0,.3)}
   .bigplay{position:relative;z-index:1;width:64px;height:64px;border-radius:50%;
@@ -158,10 +160,16 @@
     vars.origin = location.origin;
   }
  
-  var tag = document.createElement('script');
-  tag.src = 'https://www.youtube.com/iframe_api';
-  tag.onerror = function(){ fallback(); };
-  document.head.appendChild(tag);
+  // If the API is already on the page, the ready callback never fires again —
+  // build the player straight away instead of waiting for a call that won't come.
+  if (window.YT && window.YT.Player){
+    setTimeout(function(){ buildPlayer(); }, 0);
+  } else {
+    var tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    tag.onerror = function(){ fallback(); };
+    document.head.appendChild(tag);
+  }
  
   // If the API never loads or never becomes ready, degrade to a plain embed
   // rather than leaving a play button that does nothing.
@@ -169,7 +177,10 @@
     if (!window.YT || !window.YT.Player || !player) fallback();
   }, 5000);
  
-  window.onYouTubeIframeAPIReady = function(){
+  window.onYouTubeIframeAPIReady = function(){ buildPlayer(); };
+ 
+  function buildPlayer(){
+    if (player) return;
     player = new YT.Player('yt', {
       videoId: VIDEO,
       playerVars: vars,
@@ -179,7 +190,7 @@
         onError: function(){ clearTimeout(apiWatchdog); fallback(); }
       }
     });
-  };
+  }
  
   // Fallback: no JS control of the player is possible, so hand back YouTube's own
   // controls (colour=white keeps them quiet) and drop our dead control strip.
@@ -215,7 +226,6 @@
       clearInterval(timer); timer = setInterval(render, 250);
     } else if (e.data === S.PAUSED || e.data === S.ENDED ||
                e.data === S.UNSTARTED || e.data === S.CUED){
-      if (everPlayed) cover.classList.add('scrim');
       cover.classList.remove('hide');
       iconP.setAttribute('d', PLAY);
       clearInterval(timer);
